@@ -38,6 +38,14 @@ def fetch(line):
     return items, msg, datetime.now(KST)
 
 
+def col(df, *names, default=""):
+    """응답 필드 이름이 달라도 죽지 않도록, 있는 첫 번째 열을 문자열로 돌려준다."""
+    for n in names:
+        if n in df.columns:
+            return df[n].astype(str)
+    return pd.Series([default] * len(df), index=df.index, dtype=str)
+
+
 def direction(line, updn):
     if line == "2호선":
         return "내선" if str(updn) == "0" else "외선"
@@ -64,15 +72,17 @@ if not items:
     st.stop()
 
 df = pd.DataFrame(items)
-df["방향"] = [direction(line, u) for u in df.get("updnLine", "")]
-df["상태"] = df.get("trainSts", "").astype(str).map(STATUS).fillna("-")
-df["급행"] = df.get("directAt", "").astype(str).map({"1": "급행", "7": "특급"}).fillna("")
-df["역순서"] = pd.to_numeric(df.get("statnId", 0), errors="coerce")
+df["방향"] = [direction(line, u) for u in col(df, "updnLine")]
+df["상태"] = col(df, "trainSttus", "trainSts").map(STATUS).fillna("-")
+df["급행"] = col(df, "directAt").map({"1": "급행", "7": "특급"}).fillna("")
+df["역순서"] = pd.to_numeric(col(df, "statnId", default="0"), errors="coerce")
+for c in ("trainNo", "statnNm", "statnTnm", "recptnDt"):
+    df[c] = col(df, c, default="-")
 
 c1, c2, c3 = st.columns(3)
 c1.metric("운행 중인 열차", f"{len(df)}대")
 c2.metric("조회 시각", fetched.strftime("%H:%M:%S"))
-c3.metric("데이터 생성 시각", str(df["recptnDt"].max())[-8:] if "recptnDt" in df else "-")
+c3.metric("데이터 생성 시각", str(df["recptnDt"].max())[-8:])
 
 order = df.sort_values("역순서")["statnNm"].drop_duplicates().tolist()
 chart = (
